@@ -1,260 +1,255 @@
-# Qwen3.5-9B Local AI ΓÇö Setup & Usage Guide
-Run **Qwen3.5-9B** fully locally on your RTX 4070 SUPER via WSL2, and use it as
-the backend for **Claude Code** and **OpenAI Codex CLI** ΓÇö free, private, no API costs.
+﻿# Qwen3.5 Local AI -- Setup & Usage Guide
+Run Qwen3.5 fully locally on your RTX 4070 SUPER via WSL2, and use it as
+the backend for Claude Code and OpenAI Codex CLI -- free, private, no API costs.
 ---
 ## Your Hardware
 | Component | Spec |
 |-----------|------|
 | CPU | AMD Ryzen 7 5800XT (8c / 16t) |
 | RAM | 32GB DDR4 @ 3200MHz |
-| GPU | NVIDIA RTX 4070 SUPER ΓÇö 12GB VRAM |
+| GPU | NVIDIA RTX 4070 SUPER -- 12GB VRAM |
 | OS | Windows 10 Pro + WSL2 (Ubuntu 24) |
-## Why Qwen3.5-9B?
-- Beats Qwen3-14B and even Qwen3-30B on most benchmarks despite being smaller
-- Fits entirely in 12GB VRAM (~6.5GB used, ~5.5GB free) ΓåÆ 60ΓÇô100+ tok/s
-- Hybrid reasoning: thinking mode ON for hard problems, OFF for speed
-- 256K context window, strong at coding, tool calling, agentic tasks
-- Completely free and private ΓÇö runs 100% on your machine
+---
+## Available Models
+Three models are available -- choose based on speed vs quality tradeoff:
+| Flag | Model | Size | VRAM | Speed | Quality |
+|------|-------|------|------|-------|---------|
+| `-Model 9B-Q4` | Qwen3.5-9B Q4 | 6.5GB | fully in VRAM | ~63 tok/s | Good -- fast everyday coding |
+| `-Model 9B-Q6` | Qwen3.5-9B Q6 | 9GB | fully in VRAM | ~50 tok/s | Better -- near full precision |
+| `-Model 35B` | Qwen3.5-35B-A3B Q3 | 17GB | VRAM + RAM | ~25-40 tok/s | Best -- strongest reasoning |
+**Which to use?**
+- Daily coding, fast iteration --> `9B-Q4` (default)
+- Better output quality, still fast --> `9B-Q6`
+- Hard problems, architecture decisions, complex debugging --> `35B`
+- The 35B is MoE (Mixture of Experts) so only 3B parameters are active at once,
+  meaning the RAM spillover penalty is much smaller than a dense 35B model.
 ---
 ## Scripts in This Folder
 | Script | Purpose | Run once? |
 |--------|---------|-----------|
-| `Fix-WslMemory.ps1` | Gives WSL 24GB RAM (required to compile llama.cpp) | Γ£à Done |
-| `Install-ClaudeCodex.ps1` | Installs Claude Code + Codex CLI via npm | Γ£à Done |
-| `Start-WslServer.ps1` | Starts Qwen3.5-9B llama-server in WSL | Every session |
-| `Start-ClaudeCode.ps1` | Launches Claude Code ΓåÆ local Qwen (or cloud) | Every session |
-| `Start-Codex.ps1` | Launches Codex CLI ΓåÆ local Qwen (or cloud) | Every session |
-| `Start-ChatUI.ps1` | Launches Open WebUI browser chat interface | Every session |
+| `Fix-WslMemory.ps1` | Gives WSL 24GB RAM (required to compile llama.cpp) | Done |
+| `Install-ClaudeCodex.ps1` | Installs Claude Code + Codex CLI via npm | Done |
+| `Start-WslServer.ps1` | Starts llama-server in WSL | Every session |
+| `Start-ClaudeCode.ps1` | Launches Claude Code (local or cloud) | Every session |
+| `Start-Codex.ps1` | Launches Codex CLI (local or cloud) | Every session |
+| `Start-ChatUI.ps1` | Launches Open WebUI browser chat | Every session |
+| `update-all.sh` | Updates everything in WSL (run in WSL) | Weekly |
 ---
 ## Daily Workflow
-### Step 1 ΓÇö Start the model server (WSL)
-Open a WSL terminal and run:
+### Step 1 -- Start the model server (WSL)
+Open a WSL terminal:
 ```bash
 cd ~/qwen3.5
-./serve_qwen35_9b.sh
+./serve_qwen35_9b.sh          # default (9B Q4)
 ```
-Wait until you see:
-```
-llama server listening at http://127.0.0.1:8001
-```
-Keep this terminal open. The server runs until you close it or press Ctrl+C.
-### Step 2 ΓÇö Launch your coding tool (PowerShell)
-Open PowerShell and navigate to this folder:
+Wait for: `llama server listening at http://127.0.0.1:8001`
+Keep this terminal open the whole session.
+### Step 2 -- Launch your tool (PowerShell)
 ```powershell
 cd C:\Users\m_ren\Desktop\Qwen3.5-Scripts
-```
-Then pick your tool:
-```powershell
-.\Start-ClaudeCode.ps1    # Claude Code  ΓåÆ local Qwen3.5-9B
-.\Start-Codex.ps1         # Codex CLI    ΓåÆ local Qwen3.5-9B
-```
-Or for browser chat (start server in chat mode first):
-```powershell
+# Pick a model, pick a tool:
+.\Start-WslServer.ps1 -Model 9B-Q4   # fast (default)
+.\Start-WslServer.ps1 -Model 9B-Q6   # better quality
+.\Start-WslServer.ps1 -Model 35B     # best quality
+# Then launch your coding agent:
+.\Start-ClaudeCode.ps1 -Model 9B-Q4
+.\Start-Codex.ps1      -Model 9B-Q4
+# Or browser chat (start server in chat mode first):
 .\Start-WslServer.ps1 -Mode chat
 .\Start-ChatUI.ps1
-# Browser opens automatically at http://localhost:8080
+```
+The `-Model` flag must match between `Start-WslServer.ps1` and your coding tool.
+---
+## All Script Flags
+### Start-WslServer.ps1
+```powershell
+.\Start-WslServer.ps1                        # 9B-Q4, coding mode
+.\Start-WslServer.ps1 -Model 9B-Q6           # 9B-Q6, coding mode
+.\Start-WslServer.ps1 -Model 35B             # 35B, coding mode
+.\Start-WslServer.ps1 -Mode chat             # 9B-Q4, chat mode
+.\Start-WslServer.ps1 -Model 35B -Mode chat  # 35B, chat mode
+```
+### Start-ClaudeCode.ps1 / Start-Codex.ps1
+```powershell
+.\Start-ClaudeCode.ps1                # 9B-Q4 local (default)
+.\Start-ClaudeCode.ps1 -Model 9B-Q6  # 9B-Q6 local
+.\Start-ClaudeCode.ps1 -Model 35B    # 35B local
+.\Start-ClaudeCode.ps1 -Cloud        # Anthropic cloud (real Claude)
+.\Start-Codex.ps1                    # 9B-Q4 local (default)
+.\Start-Codex.ps1 -Model 9B-Q6      # 9B-Q6 local
+.\Start-Codex.ps1 -Model 35B        # 35B local
+.\Start-Codex.ps1 -Cloud            # OpenAI cloud (real GPT)
 ```
 ---
 ## Server Modes
-The server has two modes ΓÇö switch by restarting with a different flag:
-| Mode | Command | Settings | Best for |
-|------|---------|----------|----------|
-| Coding (default) | `.\Start-WslServer.ps1` | temp=0.6, presence_penalty=OFF | Claude Code, Codex |
-| Chat | `.\Start-WslServer.ps1 -Mode chat` | temp=1.0, presence_penalty=1.5 | Open WebUI conversation |
+| Mode | Settings | Best for |
+|------|----------|----------|
+| coding (default) | temp=0.6, presence_penalty=OFF | Claude Code, Codex |
+| chat | temp=1.0, presence_penalty=1.5 | Open WebUI conversation |
 **Why presence_penalty=OFF for coding?**
-With it on, the model avoids repeating tokens it has already used ΓÇö good for prose,
-bad for code where you need to repeat keywords like `return`, `self`, `import`,
-variable names, etc.
+With it on, the model avoids repeating tokens it has used -- bad for code that
+legitimately repeats keywords like `return`, `self`, `import`, variable names, etc.
 ---
 ## Thinking Mode
-Qwen3.5 supports hybrid reasoning ΓÇö you can toggle thinking per-prompt without
-restarting the server:
-- `/think` at the start of a prompt ΓåÆ enables chain-of-thought reasoning
-- `/no_think` at the start of a prompt ΓåÆ fast direct answer
-**Thinking ON** (default): slower but better for complex problems, architecture
-decisions, debugging tricky issues.
-**Thinking OFF**: faster, good for simple questions, boilerplate, quick lookups.
-Example in Claude Code:
+Toggle per-prompt without restarting the server:
+- `/think` -- enables chain-of-thought reasoning (slower, better for hard problems)
+- `/no_think` -- fast direct answer (good for simple questions, boilerplate)
+Examples in Claude Code:
 ```
-/no_think write a function to reverse a string
-/think    design a caching layer for this API with Redis
+/no_think   write a function to reverse a string
+/think      design a Redis caching layer for this API
 ```
 ---
 ## Switching to Cloud
-Any script accepts a `-Cloud` flag to point at the real cloud API instead.
-It will prompt you for an API key on first use and save it permanently.
 ```powershell
-.\Start-ClaudeCode.ps1 -Cloud   # ΓåÆ Anthropic Claude (needs ANTHROPIC_API_KEY)
-.\Start-Codex.ps1 -Cloud        # ΓåÆ OpenAI GPT      (needs OPENAI_API_KEY)
+.\Start-ClaudeCode.ps1 -Cloud   # Anthropic Claude (prompts for API key first time)
+.\Start-Codex.ps1 -Cloud        # OpenAI GPT      (prompts for API key first time)
 ```
-Get API keys:
+API keys are saved permanently to your Windows user environment after first entry.
 - Anthropic: https://console.anthropic.com/settings/keys
 - OpenAI:    https://platform.openai.com/api-keys
-To revert to local after using cloud, just run the script without `-Cloud`.
 ---
-## Server Endpoints
-Once `serve_qwen35_9b.sh` is running, these are all live on port 8001:
+## Server Endpoints (port 8001)
 | Endpoint | URL | Used by |
 |----------|-----|---------|
-| Health check | http://localhost:8001/health | Scripts (auto-check) |
-| Built-in chat UI | http://localhost:8001 | Browser (basic) |
+| Health check | http://localhost:8001/health | Scripts |
+| Built-in chat UI | http://localhost:8001 | Browser |
 | Anthropic API | http://localhost:8001/v1/messages | Claude Code |
 | OpenAI API | http://localhost:8001/v1/chat/completions | Codex CLI |
-The server speaks both Anthropic and OpenAI API formats simultaneously on the same port.
 ---
-## VRAM & Performance
+## VRAM Usage
 ```
-RTX 4070 SUPER (12GB VRAM) breakdown when running Qwen3.5-9B:
-  Model:    ~5.1 GB
-  KV cache: ~0.1 GB  (grows with context length)
-  Compute:  ~0.5 GB
-  Free:     ~5.5 GB  ΓåÉ plenty of headroom
+RTX 4070 SUPER (12GB VRAM):
+  9B-Q4:  model=5.1GB  cache=0.1GB  compute=0.5GB  free=~5.5GB
+  9B-Q6:  model=7.5GB  cache=0.1GB  compute=0.5GB  free=~3.5GB
+  35B:    model=~12GB in VRAM + ~5GB spills to RAM (MoE = low penalty)
 ```
-Expected speeds:
-- **Prompt processing**: ~100 tok/s
-- **Generation**: ~63 tok/s
-- **Context**: up to 32,768 tokens (set in serve script)
+---
+## Keeping Everything Updated
+Run weekly in WSL:
+```bash
+# Full update (apt + pip + npm + llama.cpp if changed)
+~/qwen3.5/update-all.sh
+# Quick update -- skips llama.cpp rebuild
+~/qwen3.5/update-all.sh --skip-llama
+```
+Then push any script changes to GitHub:
+```bash
+cd /mnt/c/Users/m_ren/repos/qwen35-local-setup
+git add .
+git commit -m "describe changes"
+git push
+```
+GitHub repo: https://github.com/maxrenke/qwen35-local-setup
 ---
 ## WSL File Locations
 ```
 ~/qwen3.5/
-Γö£ΓöÇΓöÇ llama.cpp/                        # Built inference engine
-Γöé   Γö£ΓöÇΓöÇ llama-cli                     # Interactive CLI
-Γöé   Γö£ΓöÇΓöÇ llama-server                  # API server (what we use)
-Γöé   ΓööΓöÇΓöÇ ...
-Γö£ΓöÇΓöÇ unsloth/
-Γöé   ΓööΓöÇΓöÇ Qwen3.5-9B-GGUF/
-Γöé       ΓööΓöÇΓöÇ Qwen3.5-9B-UD-Q4_K_XL.gguf   # The model (~6.5GB)
-Γö£ΓöÇΓöÇ serve_qwen35_9b.sh                # Server launch script
-Γö£ΓöÇΓöÇ setup_qwen35_9b.sh                # One-time setup script
-Γö£ΓöÇΓöÇ claude_code_config.sh             # WSL env config (optional)
-ΓööΓöÇΓöÇ codex_config.sh                   # WSL env config (optional)
+|-- llama.cpp/
+|   |-- llama-cli
+|   |-- llama-server          # API server
+|   +-- ...
+|-- unsloth/
+|   |-- Qwen3.5-9B-GGUF/
+|   |   |-- Qwen3.5-9B-UD-Q4_K_XL.gguf   (~6.5GB)
+|   |   +-- Qwen3.5-9B-UD-Q6_K_XL.gguf   (~9GB)
+|   +-- Qwen3.5-35B-A3B-GGUF/
+|       +-- Qwen3.5-35B-A3B-UD-Q3_K_XL.gguf  (~17GB)
+|-- serve_qwen35_9b.sh
+|-- update-all.sh
++-- setup_qwen35_9b.sh
 ```
 ---
-## Setup History (What We Did)
-Here's everything that was configured to get here, in order:
+## Setup History
 ### 1. Verified WSL2 GPU access
 ```bash
-nvidia-smi        # Γ£à RTX 4070 SUPER visible, CUDA 13.2
-nvcc --version    # Γ¥î Not installed ΓÇö fixed next
-ls /dev/dxg       # Γ£à WSL2 GPU passthrough working
+nvidia-smi        # RTX 4070 SUPER visible, CUDA 13.2
+ls /dev/dxg       # WSL2 GPU passthrough confirmed
 ```
-### 2. Installed CUDA Toolkit 12.8 in WSL
+### 2. Installed CUDA Toolkit 12.8
 ```bash
 wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
-sudo dpkg -i cuda-keyring_1.1-1_all.deb
-sudo apt-get update
+sudo dpkg -i cuda-keyring_1.1-1_all.deb && sudo apt-get update
 sudo apt-get install -y cuda-toolkit-12-8
 echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
 echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 ### 3. Fixed WSL memory limit
-WSL2 defaults to 16GB (half of your 32GB RAM). Building llama.cpp with full
-parallelism OOM-killed the compiler. Fixed by creating `~/.wslconfig`:
+WSL2 defaults to 16GB (half of 32GB). The llama.cpp build OOM-killed the compiler.
+Fixed via Fix-WslMemory.ps1 which creates ~/.wslconfig:
 ```
 [wsl2]
 memory=24GB
 swap=8GB
 processors=8
 ```
-Then ran `wsl --shutdown` to apply. Script: `Fix-WslMemory.ps1`
 ### 4. Built llama.cpp with CUDA
 ```bash
-cd ~/qwen3.5
 git clone https://github.com/ggml-org/llama.cpp
-cmake llama.cpp -B llama.cpp/build \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DGGML_CUDA=ON \
-    -DGGML_CCACHE=OFF
-cmake --build llama.cpp/build \
-    --config Release -j 4 \        # -j 4 = limit parallel jobs to avoid OOM
+cmake llama.cpp -B llama.cpp/build -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=ON -DGGML_CCACHE=OFF
+cmake --build llama.cpp/build --config Release -j 4 \
     --target llama-cli llama-server llama-gguf-split
 cp llama.cpp/build/bin/llama-* llama.cpp/
 ```
-Note: `-j 4` (not `-j`) is critical ΓÇö unlimited parallelism OOM-kills the build.
-`-DGGML_CCACHE=OFF` silences a harmless ccache warning.
-### 5. Downloaded the model
+Note: `-j 4` not `-j` -- unlimited parallelism OOM-kills the build.
+### 5. Downloaded models
 ```bash
 pip install huggingface_hub hf_transfer --break-system-packages
+# 9B Q4 (fast, default)
 HF_HUB_ENABLE_HF_TRANSFER=1 hf download unsloth/Qwen3.5-9B-GGUF \
-    --local-dir unsloth/Qwen3.5-9B-GGUF \
-    --include "*UD-Q4_K_XL*"
+    --local-dir unsloth/Qwen3.5-9B-GGUF --include "*UD-Q4_K_XL*"
+# 9B Q6 (better quality, still fits in VRAM)
+HF_HUB_ENABLE_HF_TRANSFER=1 hf download unsloth/Qwen3.5-9B-GGUF \
+    --local-dir unsloth/Qwen3.5-9B-GGUF --include "*UD-Q6_K_XL*"
+# 35B-A3B Q3 (best quality, MoE -- spills to RAM)
+HF_HUB_ENABLE_HF_TRANSFER=1 hf download unsloth/Qwen3.5-35B-A3B-GGUF \
+    --local-dir unsloth/Qwen3.5-35B-A3B-GGUF --include "*UD-Q3_K_XL*"
 ```
-### 6. Tested the model
-```bash
-./llama.cpp/llama-cli \
-    --model unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-UD-Q4_K_XL.gguf \
-    --n-gpu-layers 999 \
-    --ctx-size 2048 \
-    --temp 0.7 --top-p 0.8 --top-k 20 --presence-penalty 0.0 \
-    -p "Write a Python function that returns the fibonacci sequence." \
-    --no-display-prompt -n 200
-# Result: Γ£à 103 tok/s prompt, 63 tok/s generation
-```
-### 7. Installed Claude Code + Codex CLI on Windows
+### 6. Installed Claude Code + Codex CLI
 ```powershell
 .\Install-ClaudeCodex.ps1
-# Installs @anthropic-ai/claude-code and @openai/codex via npm
 ```
-Note: The MS Store "OpenAI Codex" app is a different product ΓÇö a GUI desktop
-app hardcoded to OpenAI's cloud. Our `Start-Codex.ps1` uses the npm CLI version
-(`@openai/codex`) which supports custom endpoints via environment variables.
+Note: MS Store "OpenAI Codex" is a different GUI app -- we use the npm CLI version.
 ---
 ## Troubleshooting
-### Server won't start / model not found
+### Model not found error
 ```bash
-ls ~/qwen3.5/unsloth/Qwen3.5-9B-GGUF/
-# Should show: Qwen3.5-9B-UD-Q4_K_XL.gguf
-# If missing, re-run the download command in step 5 above
+ls ~/qwen3.5/unsloth/
+# Re-download the missing model using commands in step 5 above
 ```
-### Build gets OOM-killed (Killed / Terminated spam)
-WSL ran out of memory during compilation. Two fixes:
-1. Run `Fix-WslMemory.ps1` on Windows to give WSL 24GB
-2. Use `-j 4` not `-j` in the cmake build command
-3. Clean the failed build first: `rm -rf llama.cpp/build`
-### Claude Code / Codex can't connect to server
-The scripts check `http://localhost:8001/health` automatically. If it fails:
-- Make sure `serve_qwen35_9b.sh` is running in WSL
-- Wait for `server listening` to appear in the server window
-- Check the server window for error messages
-### Gibberish output from the model
-- Context length may be set too low ΓÇö the serve script uses 32768 which should be fine
-- Try adding `--cache-type-k bf16 --cache-type-v bf16` to the serve script
-### nvcc not found after installing CUDA
+### Build OOM-killed during llama.cpp compile
+1. Run Fix-WslMemory.ps1 on Windows (gives WSL 24GB)
+2. Use -j 4 not -j in cmake build
+3. Clean first: rm -rf llama.cpp/build
+### Claude Code / Codex can't connect
+- Make sure Start-WslServer.ps1 is running and showing "server listening"
+- Check the -Model flag matches between server and client scripts
+- Verify: curl http://localhost:8001/health should return {"status":"ok"}
+### Wrong model loaded
+The -Model flag in Start-ClaudeCode.ps1 / Start-Codex.ps1 sets the ANTHROPIC_MODEL
+env var which tells Claude Code which model alias to request. It must match the
+--alias set when the server was started. If mismatched, restart the server with
+the correct -Model flag.
+### git push asks for password in WSL
 ```bash
-source ~/.bashrc
-# or open a fresh WSL terminal
-nvcc --version   # should now show 12.8
+/mnt/c/Program\ Files/GitHub\ CLI/gh.exe auth setup-git
+git push
 ```
-### WSL using old memory limit after Fix-WslMemory.ps1
-```powershell
-wsl --shutdown   # on Windows PowerShell
-# Then reopen WSL
+### nvcc not found
+```bash
+source ~/.bashrc   # or open a fresh WSL terminal
 ```
 ---
-## Model Quantization Reference
-The model we use (`UD-Q4_K_XL`) is Unsloth's Dynamic 4-bit quantization ΓÇö important
-layers are kept at 8-bit or 16-bit precision while less sensitive layers are
-compressed to 4-bit. This gives near full-precision quality at ~40% of the size.
-| Quant | Size | Quality | Notes |
-|-------|------|---------|-------|
-| UD-Q2_K_XL | ~3.5GB | Good | Minimum recommended |
-| UD-Q4_K_XL | ~6.5GB | Great | **What we use ΓÇö best balance** |
-| UD-Q6_K_XL | ~9GB | Excellent | Fits in 12GB VRAM |
-| BF16 | ~19GB | Perfect | Too large for 12GB VRAM |
+## Model Selection Guide
+```
+Need speed?          --> 9B-Q4  (63 tok/s, good quality)
+Need quality?        --> 9B-Q6  (50 tok/s, near full precision)
+Need best results?   --> 35B    (25-40 tok/s, significantly stronger)
+Need cloud quality?  --> -Cloud flag (uses real Claude / GPT)
+```
 ---
-## Why Not a Bigger Model?
-| Model | VRAM needed | Fits in 12GB? | Speed | vs 9B quality |
-|-------|-------------|---------------|-------|---------------|
-| Qwen3.5-9B Q4 | ~6.5GB | Γ£à fully | ~63 tok/s | baseline |
-| Qwen3-14B Q4 | ~8.5GB | Γ£à fully | ~45 tok/s | Γ¥î worse (older arch) |
-| Qwen3.5-27B Q4 | ~17GB | ΓÜá∩╕Å spills to RAM | ~20 tok/s | Γ£à better |
-| Qwen3.5-35B-A3B Q4 | ~22GB | ΓÜá∩╕Å spills to RAM | ~15 tok/s | Γ£à much better |
-Qwen3.5-9B beats Qwen3-14B because it's a newer architecture ΓÇö bigger parameter
-count does not automatically win across generations. The 27B and 35B-A3B are
-genuinely better but would require significant RAM spillover on your hardware,
-dropping speed to ~15-20 tok/s which can make coding agents feel sluggish.
----
-*Setup completed March 2026. Model: unsloth/Qwen3.5-9B-GGUF UD-Q4_K_XL*
-*llama.cpp built with CUDA 12.8, RTX 4070 SUPER, WSL2 Ubuntu 24*
+*Setup completed March 2026.*
+*Models: Qwen3.5-9B (Q4+Q6) and Qwen3.5-35B-A3B (Q3)*
+*llama.cpp built with CUDA 12.8 on RTX 4070 SUPER, WSL2 Ubuntu 24*
+*GitHub: https://github.com/maxrenke/qwen35-local-setup*
