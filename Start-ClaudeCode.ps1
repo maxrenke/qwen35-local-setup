@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # Start-ClaudeCode.ps1
 # Launches Claude Code -> local Qwen3.5 (or Anthropic cloud)
 #
@@ -74,7 +74,7 @@ if ($Cloud) {
         if ($continue -ne "y") { exit 1 }
     }
     $env:ANTHROPIC_BASE_URL = "http://localhost:8001"
-    $env:ANTHROPIC_API_KEY  = "sk-local-qwen"
+    $env:ANTHROPIC_API_KEY = ""
     $env:ANTHROPIC_MODEL    = $modelAlias
     $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
     Write-Host ""
