@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # Start-OvernightAgent.ps1
 # Starts llama-server + runs opencode headlessly on a task.
 #
@@ -202,14 +202,18 @@ Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 $startTime = Get-Date
-Push-Location $WorkDir
-# Write prompt to a temp file to avoid shell escaping issues with long prompts
+# Write prompt to a temp file -- pass via -f (file attach) to avoid arg length crashes
+# The inline message just tells opencode to read the attached file as its full instructions
 $promptTmp = Join-Path $env:TEMP "opencode_prompt_$runStamp.txt"
 $resolvedPrompt | Out-File -FilePath $promptTmp -Encoding UTF8 -NoNewline
-& $opencode run --model $modelAlias (Get-Content $promptTmp -Raw) 2>&1 | Tee-Object -FilePath $logFile
+& $opencode run `
+    --model $modelAlias `
+    --dir $WorkDir `
+    -f $promptTmp `
+    "Your full instructions are in the attached file. Read it completely before doing anything." `
+    2>&1 | Tee-Object -FilePath $logFile
 $exitCode = $LASTEXITCODE
 Remove-Item $promptTmp -ErrorAction SilentlyContinue
-Pop-Location
 $endTime = Get-Date
 $elapsed = $endTime - $startTime
 # ΓöÇΓöÇ Summary ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
