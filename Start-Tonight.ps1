@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # Start-Tonight.ps1
 # One-command launcher for overnight agent runs.
 #
@@ -100,6 +100,10 @@ if (-not (Test-Path $agentScript)) {
     Write-Host "  ERROR: Start-OvernightAgent.ps1 not found at $agentScript" -ForegroundColor Red
     exit 1
 }
-$agentArgs = @("-PromptFile", $p.PromptFile, "-WorkDir", $p.WorkDir, "-Model", $Model)
-if ($Superpowers) { $agentArgs += "-Superpowers" }
+$agentArgs = @{
+    PromptFile = $p.PromptFile
+    WorkDir    = $p.WorkDir
+    Model      = $Model
+}
+if ($Superpowers) { $agentArgs["Superpowers"] = $true }
 & $agentScript @agentArgs
