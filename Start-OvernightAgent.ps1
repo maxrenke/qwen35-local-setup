@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # Start-OvernightAgent.ps1
 # Starts llama-server + runs codex headlessly on a task.
 #
@@ -197,17 +197,25 @@ Write-Host "  Started: $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
-$startTime = Get-Date
-# Pipe prompt via stdin -- codex reads from stdin when prompt arg is "-"
-# This avoids Windows command-line length limits entirely
-$resolvedPrompt | & $codex exec `
-    --full-auto `
-    --model $modelAlias `
-    -C $WorkDir `
-    --output-last-message $resultFile `
-    - 2>&1 | Tee-Object -FilePath $logFile
-$exitCode = $LASTEXITCODE
-$elapsed  = (Get-Date) - $startTime
+$startTime  = Get-Date
+$promptTmp  = Join-Path $env:TEMP "codex_prompt_$runStamp.txt"
+[System.IO.File]::WriteAllText($promptTmp, $resolvedPrompt, [System.Text.UTF8Encoding]::new($false))
+# Use Start-Process with -RedirectStandardInput to feed prompt via stdin.
+# PowerShell cannot pipe to .exe paths in variables; this is the reliable alternative.
+$proc = Start-Process $codex `
+    -ArgumentList @("exec","--full-auto","--model",$modelAlias,"-C",$WorkDir,"--output-last-message",$resultFile,"-") `
+    -RedirectStandardInput  $promptTmp `
+    -RedirectStandardOutput "$logFile.stdout" `
+    -RedirectStandardError  "$logFile.stderr" `
+    -NoNewWindow -PassThru -Wait
+# Merge stdout+stderr into log and display live (post-run since we can't stream with redirects)
+$exitCode = $proc.ExitCode
+Remove-Item $promptTmp -ErrorAction SilentlyContinue
+Get-Content "$logFile.stdout","$logFile.stderr" -ErrorAction SilentlyContinue |
+    Tee-Object -FilePath $logFile |
+    ForEach-Object { Write-Host $_ }
+Remove-Item "$logFile.stdout","$logFile.stderr" -ErrorAction SilentlyContinue
+$elapsed = (Get-Date) - $startTime
 # ── Summary ───────────────────────────────────────────────────
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
