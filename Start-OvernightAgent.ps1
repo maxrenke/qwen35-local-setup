@@ -1,12 +1,15 @@
-# ============================================================
+﻿# ============================================================
 # Start-OvernightAgent.ps1
-# Starts llama-server + runs Codex headlessly on a task.
+# Starts llama-server + runs opencode headlessly on a task.
+#
+# Uses opencode run (not codex) -- compatible with llama-server /v1/chat/completions.
+# Codex v0.113+ switched to /v1/responses which llama-server does not support.
 #
 # Usage:
 #   .\Start-OvernightAgent.ps1 -Prompt "build me a thing"
 #   .\Start-OvernightAgent.ps1 -PromptFile ".\prompt.txt"
 #   .\Start-OvernightAgent.ps1 -PromptFile ".\prompt.txt" -Model 9B-Q6
-#   .\Start-OvernightAgent.ps1 -PromptFile ".\prompt.txt" -WorkDir "C:\Users\m_ren\repos\my-project"
+#   .\Start-OvernightAgent.ps1 -PromptFile ".\prompt.txt" -WorkDir "C:\repos\my-project"
 #   .\Start-OvernightAgent.ps1 -PromptFile ".\prompt.txt" -Superpowers
 #
 # Prompt resolution order:
@@ -14,15 +17,9 @@
 #   2. -PromptFile path (if provided)
 #   3. prompt.txt in the same directory as this script (auto-detected)
 #
-# -Superpowers flag:
-#   Prepends the superpowers bootstrap instruction so Codex loads all skills
-#   before starting. Requires Install-Superpowers.ps1 to have been run first.
-#   With superpowers active the agent will brainstorm -> plan -> TDD -> review
-#   instead of jumping straight into code. Best for complex overnight builds.
-#
 # Output:
 #   Logs written to .\logs\<timestamp>\ next to this script
-#   Final agent message written to logs\<timestamp>\result.txt
+#   Final agent output in logs\<timestamp>\agent.log
 # ============================================================
 param(
     [string]$Prompt      = "",
@@ -35,17 +32,19 @@ param(
 )
 $scriptDir = Split-Path $MyInvocation.MyCommand.Path
 # ΓöÇΓöÇ Paths ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-$codex    = "$env:APPDATA\npm\codex.cmd"
+# opencode uses /v1/chat/completions -- fully compatible with llama-server
+$opencode = "$env:APPDATA\npm\node_modules\opencode-ai\node_modules\opencode-windows-x64\bin\opencode.exe"
 $wslExe   = "$env:SystemRoot\System32\wsl.exe"
 $wslUser  = "m_ren"
 $wslHome  = "/home/$wslUser"
 $logsRoot = Join-Path $scriptDir "logs"
 $runStamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $logDir   = Join-Path $logsRoot $runStamp
+# opencode model format: provider/model-id  (provider = "qwen" per opencode.json)
 $aliasMap = @{
-    "9B-Q4" = "unsloth/Qwen3.5-9B-Q4"
-    "9B-Q6" = "unsloth/Qwen3.5-9B-Q6"
-    "35B"   = "unsloth/Qwen3.5-35B"
+    "9B-Q4" = "qwen/unsloth/Qwen3.5-9B-Q4"
+    "9B-Q6" = "qwen/unsloth/Qwen3.5-9B-Q6"
+    "35B"   = "qwen/unsloth/Qwen3.5-35B"
 }
 $modelAlias = $aliasMap[$Model]
 # ΓöÇΓöÇ Resolve prompt ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -74,7 +73,7 @@ else {
         Write-Host "  ERROR: No prompt provided." -ForegroundColor Red
         Write-Host ""
         Write-Host "  Options:" -ForegroundColor Yellow
-        Write-Host "    1. Pass a prompt:    .\Start-OvernightAgent.ps1 -Prompt `"do a thing`"" -ForegroundColor Gray
+        Write-Host "    1. Pass a prompt:    .\Start-OvernightAgent.ps1 -Prompt 'do a thing'" -ForegroundColor Gray
         Write-Host "    2. Pass a file:      .\Start-OvernightAgent.ps1 -PromptFile .\prompt.txt" -ForegroundColor Gray
         Write-Host "    3. Drop a file:      create prompt.txt next to this script" -ForegroundColor Gray
         Write-Host ""
@@ -100,22 +99,17 @@ Before doing ANYTHING else: run ``~/.codex/superpowers/.codex/superpowers-codex 
     $promptSource   = "$promptSource [+superpowers]"
 }
 # ΓöÇΓöÇ Resolve working directory ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-if ($WorkDir -eq "") {
-    $WorkDir = $scriptDir
-}
-if (-not (Test-Path $WorkDir)) {
-    New-Item -ItemType Directory -Path $WorkDir | Out-Null
-}
+if ($WorkDir -eq "") { $WorkDir = $scriptDir }
+if (-not (Test-Path $WorkDir)) { New-Item -ItemType Directory -Path $WorkDir | Out-Null }
 # ΓöÇΓöÇ Create log dir ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-$logFile    = Join-Path $logDir "agent.log"
-$resultFile = Join-Path $logDir "result.txt"
-$promptLog  = Join-Path $logDir "prompt_used.txt"
+$logFile   = Join-Path $logDir "agent.log"
+$promptLog = Join-Path $logDir "prompt_used.txt"
 $resolvedPrompt | Out-File -FilePath $promptLog -Encoding UTF8
 # ΓöÇΓöÇ Header ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Overnight Agent" -ForegroundColor Cyan
+Write-Host "  Overnight Agent (opencode)" -ForegroundColor Cyan
 Write-Host "  Model:       $Model  ($modelAlias)" -ForegroundColor White
 Write-Host "  WorkDir:     $WorkDir" -ForegroundColor White
 Write-Host "  Prompt:      $promptSource" -ForegroundColor White
@@ -123,14 +117,14 @@ Write-Host "  Superpowers: $(if ($Superpowers) { 'ON' } else { 'off' })" -Foregr
 Write-Host "  Logs:        $logDir" -ForegroundColor White
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Prompt preview:" -ForegroundColor DarkGray
 $preview = if ($resolvedPrompt.Length -gt 300) { $resolvedPrompt.Substring(0,300) + "..." } else { $resolvedPrompt }
+Write-Host "  Prompt preview:" -ForegroundColor DarkGray
 Write-Host "  $($preview -replace "`n", "`n  ")" -ForegroundColor Gray
 Write-Host ""
 # ΓöÇΓöÇ Sanity checks ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-if (-not (Test-Path $codex)) {
-    Write-Host "  ERROR: codex not found at $codex" -ForegroundColor Red
-    Write-Host "  Run Install-ClaudeCodex.ps1 first." -ForegroundColor Yellow
+if (-not (Test-Path $opencode)) {
+    Write-Host "  ERROR: opencode not found at $opencode" -ForegroundColor Red
+    Write-Host "  Run: npm install -g opencode-ai" -ForegroundColor Yellow
     exit 1
 }
 if (-not (Test-Path $wslExe)) {
@@ -140,6 +134,7 @@ if (-not (Test-Path $wslExe)) {
 # ΓöÇΓöÇ Start llama-server (unless skipped) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 if (-not $SkipServerStart) {
     Write-Host "  Starting llama-server ($Model)..." -ForegroundColor Yellow
+    # Kill any running server first
     Start-Process $wslExe -ArgumentList @("-e","bash","-c","pkill -f llama-server 2>/dev/null || true; sleep 1") -NoNewWindow -Wait
     $modelFileMap = @{
         "9B-Q4" = "unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-UD-Q4_K_XL.gguf"
@@ -185,7 +180,8 @@ if (-not $SkipServerStart) {
         exit 1
     }
     Write-Host "  Server UP at http://localhost:8001" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "  -SkipServerStart set -- assuming server already running." -ForegroundColor DarkGray
     try {
         Invoke-WebRequest -Uri "http://localhost:8001/health" -TimeoutSec 3 -ErrorAction Stop | Out-Null
@@ -196,16 +192,10 @@ if (-not $SkipServerStart) {
         if ($continue -ne "y") { exit 1 }
     }
 }
-# ΓöÇΓöÇ Set environment for local model ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-$env:OPENAI_BASE_URL = "http://localhost:8001/v1"
-$env:OPENAI_API_KEY  = "sk-local-qwen"
-$env:OPENAI_MODEL    = $modelAlias
-# ΓöÇΓöÇ Run Codex headlessly ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ΓöÇΓöÇ Run opencode headlessly ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 Write-Host ""
-Write-Host "  Launching codex exec --full-auto ..." -ForegroundColor Cyan
-if ($Superpowers) {
-    Write-Host "  Superpowers: agent will brainstorm -> plan -> TDD -> review" -ForegroundColor Magenta
-}
+Write-Host "  Launching opencode run ..." -ForegroundColor Cyan
+Write-Host "  Model: $modelAlias" -ForegroundColor DarkGray
 Write-Host "  Output logging to: $logFile" -ForegroundColor DarkGray
 Write-Host "  Started: $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor DarkGray
 Write-Host ""
@@ -213,14 +203,15 @@ Write-Host "============================================================" -Foreg
 Write-Host ""
 $startTime = Get-Date
 Push-Location $WorkDir
-& $codex exec --full-auto `
-    --model $modelAlias `
-    --output-last-message $resultFile `
-    $resolvedPrompt 2>&1 | Tee-Object -FilePath $logFile
-Pop-Location
+# Write prompt to a temp file to avoid shell escaping issues with long prompts
+$promptTmp = Join-Path $env:TEMP "opencode_prompt_$runStamp.txt"
+$resolvedPrompt | Out-File -FilePath $promptTmp -Encoding UTF8 -NoNewline
+& $opencode run --model $modelAlias (Get-Content $promptTmp -Raw) 2>&1 | Tee-Object -FilePath $logFile
 $exitCode = $LASTEXITCODE
-$endTime  = Get-Date
-$elapsed  = $endTime - $startTime
+Remove-Item $promptTmp -ErrorAction SilentlyContinue
+Pop-Location
+$endTime = Get-Date
+$elapsed = $endTime - $startTime
 # ΓöÇΓöÇ Summary ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
@@ -228,14 +219,7 @@ Write-Host "  Run complete" -ForegroundColor Cyan
 Write-Host "  Exit code:  $exitCode" -ForegroundColor $(if ($exitCode -eq 0) { "Green" } else { "Red" })
 Write-Host "  Duration:   $([math]::Floor($elapsed.TotalMinutes))m $($elapsed.Seconds)s" -ForegroundColor White
 Write-Host "  Log:        $logFile" -ForegroundColor Gray
-Write-Host "  Result:     $resultFile" -ForegroundColor Gray
 Write-Host "  Prompt:     $promptLog" -ForegroundColor Gray
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
-if (Test-Path $resultFile) {
-    Write-Host "  Final agent message:" -ForegroundColor Yellow
-    Write-Host ""
-    Get-Content $resultFile | ForEach-Object { Write-Host "  $_" -ForegroundColor White }
-    Write-Host ""
-}
 exit $exitCode
