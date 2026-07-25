@@ -1,87 +1,195 @@
 # ============================================================
 # Start-ClaudeCode.ps1
-# Launches Claude Code -> local Qwen3.5 (or Anthropic cloud)
+# Starts Ollama (if not running) then launches Claude Code
 #
 # Usage:
-#   .\Start-ClaudeCode.ps1                -> 9B Q4 (default)
-#   .\Start-ClaudeCode.ps1 -Model 9B-Q6   -> 9B Q6 (better quality)
-#   .\Start-ClaudeCode.ps1 -Model 35B     -> 35B-A3B (best quality)
-#   .\Start-ClaudeCode.ps1 -Cloud         -> Anthropic cloud
+#   .\Start-ClaudeCode.ps1              -> local qwen3:8b-32k (default)
+#   .\Start-ClaudeCode.ps1 -Cloud       -> Anthropic cloud API
+#   .\Start-ClaudeCode.ps1 -Dir C:\foo  -> open in specific directory
+#
+# Models (edit claude.config.json to change):
+#   main        qwen3:8b-32k    (default, best quality)
+#   fast        qwen3.5:0.8b-32k (fast subagent/autocomplete)
+#   coder-small qwen2.5-coder:1.5b
 # ============================================================
 param(
-    [ValidateSet("9B-Q4", "9B-Q6", "35B")]
-    [string]$Model = "9B-Q4",
-    [switch]$Cloud
+    [switch]$Cloud,
+    [string]$Dir = ""
 )
-$npm     = "C:\Program Files\nodejs\npm.cmd"
-$npmRoot = & $npm root -g 2>$null
-$claude  = Join-Path (Split-Path $npmRoot) "claude.cmd"
-# Model alias must match what the server was started with
-$aliasMap = @{
-    "9B-Q4" = "unsloth/Qwen3.5-9B-Q4"
-    "9B-Q6" = "unsloth/Qwen3.5-9B-Q6"
-    "35B"   = "unsloth/Qwen3.5-35B"
-}
-$modelAlias = $aliasMap[$Model]
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Cyan
-if (-not (Test-Path $claude)) {
-    Write-Host "  Claude Code not found." -ForegroundColor Red
-    Write-Host "  Run Install-ClaudeCodex.ps1 first!" -ForegroundColor Yellow
-    Read-Host "  Press Enter to exit"; exit 1
-}
-if ($Cloud) {
-    Write-Host "  Mode: Anthropic Cloud (real Claude)" -ForegroundColor Magenta
-    Write-Host "============================================================" -ForegroundColor Cyan
+
+$OLLAMA_PORT   = 11435
+$OLLAMA_HOST   = "127.0.0.1:$OLLAMA_PORT"
+$CLAUDE_CMD    = "C:\Users\m_ren\.local\bin\claude.exe"
+$HEALTH_URL    = "http://localhost:$OLLAMA_PORT/api/tags"
+
+# ---- helpers ------------------------------------------------
+function Write-Banner($msg, $color = "Cyan") {
     Write-Host ""
+    Write-Host ("=" * 60) -ForegroundColor $color
+    Write-Host "  $msg" -ForegroundColor $color
+    Write-Host ("=" * 60) -ForegroundColor $color
+}
+
+function Test-OllamaRunning {
+    try {
+        $null = Invoke-RestMethod -Uri $HEALTH_URL -TimeoutSec 5 -ErrorAction Stop
+        return $true
+    } catch { return $false }
+}
+
+function Start-OllamaServer {
+    Write-Host "  Starting Ollama on port $OLLAMA_PORT..." -ForegroundColor Yellow
+
+    # Launch with explicit env via ProcessStartInfo so OLLAMA_HOST is inherited correctly
+    $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+    $pinfo.FileName = "ollama"
+    $pinfo.Arguments = "serve"
+    $pinfo.UseShellExecute = $false
+    $pinfo.CreateNoWindow = $true
+    $pinfo.EnvironmentVariables["OLLAMA_HOST"] = $OLLAMA_HOST
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $pinfo
+    $proc.Start() | Out-Null
+
+    # Give it a moment to bind before polling
+    Start-Sleep -Seconds 3
+
+    $maxWait = 10
+    for ($i = 1; $i -le $maxWait; $i++) {
+        if (Test-OllamaRunning) {
+            Write-Host "  Ollama ready" -ForegroundColor Green
+            return $true
+        }
+        Write-Host "  Waiting... ($i/$maxWait)" -ForegroundColor DarkGray
+        Start-Sleep -Seconds 1
+    }
+    Write-Host "  ERROR: Ollama failed to start after $($maxWait + 3)s" -ForegroundColor Red
+    return $false
+}
+
+# ---- sanity checks ------------------------------------------
+if (-not (Test-Path $CLAUDE_CMD)) {
+    Write-Host "ERROR: claude not found at $CLAUDE_CMD" -ForegroundColor Red
+    Write-Host "Run: claude install" -ForegroundColor Yellow
+    exit 1
+}
+
+# ---- cloud mode ---------------------------------------------
+if ($Cloud) {
+    Write-Banner "Claude Code -> Anthropic Cloud" "Magenta"
     $existingKey = [System.Environment]::GetEnvironmentVariable("ANTHROPIC_API_KEY", "User")
     if (-not $existingKey) {
         Write-Host "  No ANTHROPIC_API_KEY found." -ForegroundColor Yellow
-        Write-Host "  Get yours at: https://console.anthropic.com/settings/keys" -ForegroundColor Gray
-        Write-Host ""
-        $apiKey = Read-Host "  Paste your Anthropic API key (sk-ant-...)"
-        if ($apiKey) {
-            [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $apiKey, "User")
-            $env:ANTHROPIC_API_KEY = $apiKey
-            Write-Host "  Key saved permanently!" -ForegroundColor Green
-        } else {
-            Write-Host "  No key entered. Exiting." -ForegroundColor Red; exit 1
-        }
+        Write-Host "  Get yours: https://console.anthropic.com/settings/keys" -ForegroundColor Gray
+        $apiKey = Read-Host "  Paste your key (sk-ant-...)"
+        if (-not $apiKey) { Write-Host "No key entered." -ForegroundColor Red; exit 1 }
+        [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $apiKey, "User")
+        $env:ANTHROPIC_API_KEY = $apiKey
+        Write-Host "  Key saved." -ForegroundColor Green
     } else {
         $env:ANTHROPIC_API_KEY = $existingKey
-        Write-Host "  ANTHROPIC_API_KEY found." -ForegroundColor Green
+        Write-Host "  ANTHROPIC_API_KEY: OK" -ForegroundColor Green
     }
     $env:ANTHROPIC_BASE_URL = ""
     $env:ANTHROPIC_MODEL    = ""
     $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = ""
     Write-Host ""
-    Write-Host "  Launching Claude Code -> Anthropic Cloud..." -ForegroundColor Yellow
+    Write-Host "  Launching Claude Code -> Anthropic Cloud..." -ForegroundColor Magenta
+
+# ---- local mode ---------------------------------------------
 } else {
-    Write-Host "  Mode: Local $Model (coding-optimized)" -ForegroundColor Green
-    Write-Host "  Model alias: $modelAlias" -ForegroundColor Gray
-    Write-Host "  Settings: temp=0.6, presence_penalty=OFF, thinking=ON" -ForegroundColor Gray
-    Write-Host "  Tip: start server with .\Start-WslServer.ps1 -Model $Model" -ForegroundColor DarkGray
-    Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host ""
-    try {
-        Invoke-WebRequest -Uri "http://localhost:8001/health" -TimeoutSec 3 -ErrorAction Stop | Out-Null
-        Write-Host "  llama-server: UP at http://localhost:8001" -ForegroundColor Green
-    } catch {
-        Write-Host "  WARNING: llama-server not responding!" -ForegroundColor Red
-        Write-Host "  Run: .\Start-WslServer.ps1 -Model $Model" -ForegroundColor Yellow
-        Write-Host ""
-        $continue = Read-Host "  Try anyway? (y/n)"
-        if ($continue -ne "y") { exit 1 }
+    Write-Banner "Claude Code -> Local Ollama" "Green"
+
+    # Ensure ollama is running
+    if (Test-OllamaRunning) {
+        Write-Host "  Ollama: already running on port $OLLAMA_PORT" -ForegroundColor Green
+    } else {
+        $ok = Start-OllamaServer
+        if (-not $ok) { exit 1 }
     }
-    $env:ANTHROPIC_BASE_URL = "http://localhost:8001"
-    $env:ANTHROPIC_API_KEY = ""
-    $env:ANTHROPIC_MODEL    = $modelAlias
+
+    # Fetch available models from Ollama
+    $modelNames = @()
+    try {
+        $tags = Invoke-RestMethod -Uri $HEALTH_URL -TimeoutSec 3
+        $modelNames = $tags.models | ForEach-Object { $_.name }
+    } catch {}
+
+    $defaultModel = "qwen3.5:0.8b-32k"
+
+    if ($modelNames.Count -eq 0) {
+        Write-Host "  WARNING: Could not fetch models from Ollama, defaulting to $defaultModel" -ForegroundColor Yellow
+        $modelNames = @($defaultModel)
+    }
+
+    # Sort: default model first, rest alphabetically
+    $modelNames = @(
+        $modelNames | Where-Object { $_ -eq $defaultModel }
+        $modelNames | Where-Object { $_ -ne $defaultModel } | Sort-Object
+    )
+
+    # Arrow-key model picker
+    $selected = 0
+    Write-Host ""
+    Write-Host "  Select model (↑↓ arrows + Enter):" -ForegroundColor Cyan
+    Write-Host ""
+
+    # Print menu items once to claim the lines
+    foreach ($m in $modelNames) { Write-Host "" }
+    $menuBottom = [Console]::CursorTop
+    $menuTop    = $menuBottom - $modelNames.Count
+
+    function Draw-Menu {
+        for ($i = 0; $i -lt $modelNames.Count; $i++) {
+            [Console]::SetCursorPosition(0, $menuTop + $i)
+            $line = if ($i -eq $script:selected) { "  > $($modelNames[$i])" } else { "    $($modelNames[$i])" }
+            # Pad to full width to overwrite any previous content
+            $line = $line.PadRight([Console]::WindowWidth - 1)
+            if ($i -eq $script:selected) {
+                Write-Host $line -ForegroundColor Green -NoNewline
+            } else {
+                Write-Host $line -ForegroundColor Gray -NoNewline
+            }
+        }
+        [Console]::SetCursorPosition(0, $menuBottom)
+    }
+
+    [Console]::CursorVisible = $false
+    Draw-Menu
+    $pickDone = $false
+    while (-not $pickDone) {
+        $key = [Console]::ReadKey($true)
+        switch ($key.Key) {
+            "UpArrow"   { if ($script:selected -gt 0)                          { $script:selected-- }; Draw-Menu }
+            "DownArrow" { if ($script:selected -lt ($modelNames.Count - 1))    { $script:selected++ }; Draw-Menu }
+            "Enter"     { $pickDone = $true }
+        }
+    }
+    [Console]::CursorVisible = $true
+    Write-Host ""
+
+    $chosenModel = $modelNames[$selected]
+
+    $env:ANTHROPIC_BASE_URL = "http://localhost:$OLLAMA_PORT"
+    $env:ANTHROPIC_API_KEY  = "ollama"
+    $env:ANTHROPIC_MODEL    = $chosenModel
     $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
+    $env:OLLAMA_HOST        = $OLLAMA_HOST
+
+    Write-Host "  ANTHROPIC_BASE_URL -> http://localhost:$OLLAMA_PORT" -ForegroundColor DarkGray
+    Write-Host "  ANTHROPIC_MODEL    -> $chosenModel" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "  ANTHROPIC_BASE_URL = http://localhost:8001" -ForegroundColor Gray
-    Write-Host "  ANTHROPIC_MODEL    = $modelAlias" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "  Launching Claude Code -> Local $Model..." -ForegroundColor Yellow
+    Write-Host "  Launching Claude Code -> Local..." -ForegroundColor Green
 }
+
+# ---- launch -------------------------------------------------
 Write-Host ""
-& $claude
+if ($Dir -and (Test-Path $Dir)) {
+    Set-Location $Dir
+    Write-Host "  Working dir: $Dir" -ForegroundColor Gray
+}
+
+$env:MAX_THINKING_TOKENS                   = "0"
+$env:CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING = "1"
+
+& $CLAUDE_CMD

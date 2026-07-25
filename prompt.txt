@@ -1,0 +1,38 @@
+﻿Build a local GPU + system monitoring dashboard as a self-contained web app.
+## Goal
+A single-page dashboard I can open on my phone browser while on my home Tailscale
+network. It should show live GPU and system stats from this Windows machine.
+## Tech requirements
+- Backend: Python (use 3.12), a simple HTTP server (Flask or FastAPI)
+- Frontend: single HTML file served by the backend, auto-refreshes every 3 seconds
+- No external cloud dependencies -- everything runs locally
+- Should start with one command: `python monitor.py`
+- Save everything to: C:\Users\m_ren\repos\monitor-dashboard\
+## Stats to display
+GPU:
+  - GPU name + driver version
+  - GPU utilization %
+  - VRAM used / total (GB)
+  - GPU temperature (C)
+  - Power draw (W)
+  - Clock speed (MHz)
+System:
+  - CPU utilization % (per core + overall)
+  - RAM used / total (GB)
+  - Uptime
+Disk:
+  - Used / free / total for C:, D:, and E: drives
+## UI requirements
+- Dark theme, mobile-friendly, works at 390px width (iPhone-sized)
+- Color-coded: green = healthy, yellow = warm, red = high
+- GPU stats should be the most prominent section (biggest, top of page)
+- Show "last updated" timestamp
+## Data source
+Use `nvidia-smi` (at C:\Windows\System32\nvidia-smi.exe) for GPU stats.
+Use `psutil` Python library for CPU/RAM/disk.
+## Deliverables
+1. `monitor.py` -- the backend server (runs on port 5000)
+2. README.md -- how to install deps and run it
+3. A `requirements.txt`
+Make sure it actually runs -- test that nvidia-smi output parses correctly by
+checking the format: nvidia-smi --query-gpu=... --format=csv,noheader,nounits

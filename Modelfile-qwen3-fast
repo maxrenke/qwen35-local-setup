@@ -1,0 +1,10 @@
+FROM qwen3:8b-32k
+
+# Disable extended thinking for snappy coding agent responses
+# Use /think in a message to enable thinking on-demand for hard problems
+PARAMETER thinking false
+PARAMETER temperature 0.5
+PARAMETER top_k 20
+PARAMETER top_p 0.95
+PARAMETER repeat_penalty 1
+PARAMETER num_ctx 32768
