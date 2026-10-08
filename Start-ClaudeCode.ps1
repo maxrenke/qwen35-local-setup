@@ -17,7 +17,7 @@ param(
     [string]$Dir = ""
 )
 
-$OLLAMA_PORT   = 11435
+$OLLAMA_PORT   = 11434
 $OLLAMA_HOST   = "127.0.0.1:$OLLAMA_PORT"
 $CLAUDE_CMD    = "C:\Users\m_ren\.local\bin\claude.exe"
 $HEALTH_URL    = "http://localhost:$OLLAMA_PORT/api/tags"
@@ -174,6 +174,8 @@ if ($Cloud) {
     $env:ANTHROPIC_API_KEY  = "ollama"
     $env:ANTHROPIC_MODEL    = $chosenModel
     $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
+    # Match OLLAMA_CONTEXT_LENGTH so auto-compact fires before the real window overflows
+    $env:CLAUDE_CODE_MAX_CONTEXT_TOKENS = "64000"
     $env:OLLAMA_HOST        = $OLLAMA_HOST
 
     Write-Host "  ANTHROPIC_BASE_URL -> http://localhost:$OLLAMA_PORT" -ForegroundColor DarkGray
